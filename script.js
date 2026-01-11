@@ -1,1 +1,3 @@
-console.log("PrepMaster loaded successfully");
+function showMessage() {
+  alert("PrepMaster App Loaded Successfully!");
+}
