@@ -1,0 +1,7 @@
+{
+  "name": "PrepMaster College Exam Portal",
+  "description": "A comprehensive exam preparation platform for college students featuring AI-driven study tools, note management, automated scheduling, and multilingual voice assistance.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
