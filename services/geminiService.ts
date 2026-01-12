@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Priority } from "../types";
 
 // Initialize the Google GenAI SDK strictly as per requirements
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 /**
  * Robust JSON parser that handles potential AI markdown wrapping
@@ -15,19 +15,28 @@ function safeJsonParse(text: string | undefined) {
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("AI Response was not valid JSON:", text);
-    throw new Error("Failed to parse AI output. Try again with clearer content.");
+    throw new Error("Failed to parse AI output. The response was not in a valid format.");
   }
 }
 
 export async function summarizeNotes(rawContent: string, fileData?: { data: string, mimeType: string }) {
-  const prompt = `Analyze these student study materials and extract key information. 
-  Output MUST be a valid JSON object with:
-  1. "summary": A structured overview.
-  2. "formulas": Array of strings.
-  3. "definitions": Array of strings.
-  4. "importantQuestions": Array of objects { "question": string, "priority": string }.
+  // Check for key presence
+  if (!process.env.API_KEY) {
+    throw new Error("API Key is missing. Please set the API_KEY environment variable in your project settings.");
+  }
+
+  const prompt = `You are a high-level academic assistant. Analyze the provided study material.
+  Return a valid JSON object with the following structure:
+  {
+    "summary": "A 2-3 paragraph detailed summary",
+    "formulas": ["List of formulas found"],
+    "definitions": ["Key terms and their definitions"],
+    "importantQuestions": [
+      {"question": "Potential exam question", "priority": "Critical" | "Important" | "Optional" | "Less Important"}
+    ]
+  }
   
-  Context: ${rawContent || 'Study material analysis.'}`;
+  User Notes: ${rawContent || 'Analyze the attached file content.'}`;
 
   const parts: any[] = [{ text: prompt }];
 
@@ -42,7 +51,7 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: { parts },
       config: {
         responseMimeType: "application/json",
@@ -72,10 +81,19 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
     return safeJsonParse(response.text);
   } catch (error: any) {
     console.error("Gemini Summarization Error:", error);
-    if (!process.env.API_KEY) {
-      throw new Error("API Key is missing from the environment configuration.");
+    
+    // Provide specific feedback for common API errors
+    if (error.status === 403) {
+      throw new Error("API Key Invalid or Permission Denied (403). Ensure the Gemini API is enabled for your project.");
     }
-    throw new Error(error?.message || "Analysis failed. Please check your connection and the uploaded file.");
+    if (error.status === 429) {
+      throw new Error("Quota Exceeded (429). Please wait a moment before trying again.");
+    }
+    if (error.message?.includes('Safety')) {
+      throw new Error("The content was blocked by AI safety filters. Please try a different document.");
+    }
+    
+    throw new Error(error?.message || "Analysis failed. The file might be too large or unsupported.");
   }
 }
 
