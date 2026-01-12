@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Priority } from "../types";
 
 // Initialize the Google GenAI SDK strictly as per requirements
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 /**
  * Robust JSON parser that handles potential AI markdown wrapping
@@ -15,28 +15,23 @@ function safeJsonParse(text: string | undefined) {
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("AI Response was not valid JSON:", text);
-    throw new Error("Failed to parse AI output. The response was not in a valid format.");
+    throw new Error("Failed to parse AI output. The response format was unexpected.");
   }
 }
 
 export async function summarizeNotes(rawContent: string, fileData?: { data: string, mimeType: string }) {
-  // Check for key presence
-  if (!process.env.API_KEY) {
-    throw new Error("API Key is missing. Please set the API_KEY environment variable in your project settings.");
-  }
-
-  const prompt = `You are a high-level academic assistant. Analyze the provided study material.
-  Return a valid JSON object with the following structure:
+  const prompt = `You are a college academic assistant. Analyze the provided study material.
+  Return a valid JSON object with EXACTLY this structure:
   {
-    "summary": "A 2-3 paragraph detailed summary",
-    "formulas": ["List of formulas found"],
-    "definitions": ["Key terms and their definitions"],
+    "summary": "Detailed summary paragraph",
+    "formulas": ["formula 1", "formula 2"],
+    "definitions": ["term 1: definition 1", "term 2: definition 2"],
     "importantQuestions": [
-      {"question": "Potential exam question", "priority": "Critical" | "Important" | "Optional" | "Less Important"}
+      {"question": "Exam question here", "priority": "Critical"}
     ]
   }
   
-  User Notes: ${rawContent || 'Analyze the attached file content.'}`;
+  Content to analyze: ${rawContent || 'Please analyze the attached file.'}`;
 
   const parts: any[] = [{ text: prompt }];
 
@@ -51,7 +46,7 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: { parts },
       config: {
         responseMimeType: "application/json",
@@ -80,20 +75,13 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
 
     return safeJsonParse(response.text);
   } catch (error: any) {
-    console.error("Gemini Summarization Error:", error);
+    console.error("Gemini API Error:", error);
     
-    // Provide specific feedback for common API errors
-    if (error.status === 403) {
-      throw new Error("API Key Invalid or Permission Denied (403). Ensure the Gemini API is enabled for your project.");
-    }
-    if (error.status === 429) {
-      throw new Error("Quota Exceeded (429). Please wait a moment before trying again.");
-    }
-    if (error.message?.includes('Safety')) {
-      throw new Error("The content was blocked by AI safety filters. Please try a different document.");
+    if (error.status === 403 || error.message?.includes('API_KEY')) {
+      throw new Error("The API Key provided is either missing or invalid for this project.");
     }
     
-    throw new Error(error?.message || "Analysis failed. The file might be too large or unsupported.");
+    throw new Error(error?.message || "Analysis failed. Please try a simpler file or clearer text.");
   }
 }
 
@@ -101,15 +89,11 @@ export async function getAIAnswer(query: string, language: string = 'English') {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `You are PrepMaster Assistant, managed by Baddam Vaishnavi. Answer in ${language}. 
-      Query: ${query}`,
-      config: {
-        systemInstruction: "Provide academically sound, concise answers for exam preparation."
-      }
+      contents: `You are PrepMaster Assistant. Answer concisely in ${language}. Query: ${query}`,
     });
-    return response.text || "No response generated.";
+    return response.text || "I'm sorry, I couldn't generate an answer.";
   } catch (error) {
-    console.error("Gemini Assistant Error:", error);
+    console.error("Assistant Error:", error);
     throw error;
   }
 }
@@ -118,7 +102,7 @@ export async function generateSchedule(subjects: string[], startDate: string) {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Create an exam timetable for: ${subjects.join(", ")}. Start: ${startDate}. Return JSON array of objects with subject, date, timeSlot, room.`,
+      contents: `Create an exam timetable for: ${subjects.join(", ")}. Start: ${startDate}. Return JSON array.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -138,7 +122,7 @@ export async function generateSchedule(subjects: string[], startDate: string) {
     });
     return safeJsonParse(response.text);
   } catch (error) {
-    console.error("Gemini Scheduler Error:", error);
+    console.error("Scheduler Error:", error);
     throw error;
   }
 }
