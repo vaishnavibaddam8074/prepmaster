@@ -2,8 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Priority } from "../types";
 
 // Initialize the Google GenAI SDK strictly as per requirements
-// Note: Ensure API_KEY is set in your Vercel Environment Variables
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 /**
  * Robust JSON parser that handles potential AI markdown wrapping
@@ -21,14 +20,14 @@ function safeJsonParse(text: string | undefined) {
 }
 
 export async function summarizeNotes(rawContent: string, fileData?: { data: string, mimeType: string }) {
-  const prompt = `Analyze these student study materials. 
-  Extract and structure the following into a JSON object:
-  1. "summary": A concise overview of the material.
-  2. "formulas": A list of mathematical or technical formulas.
-  3. "definitions": Key terms and their meanings.
-  4. "importantQuestions": A list of objects with "question" (string) and "priority" (string: "Critical", "Important", "Optional", or "Less Important").
+  const prompt = `Analyze these student study materials and extract key information. 
+  Output MUST be a valid JSON object with:
+  1. "summary": A structured overview.
+  2. "formulas": Array of strings.
+  3. "definitions": Array of strings.
+  4. "importantQuestions": Array of objects { "question": string, "priority": string }.
   
-  User provided context: ${rawContent || 'No additional text provided.'}`;
+  Context: ${rawContent || 'Study material analysis.'}`;
 
   const parts: any[] = [{ text: prompt }];
 
@@ -73,10 +72,10 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
     return safeJsonParse(response.text);
   } catch (error: any) {
     console.error("Gemini Summarization Error:", error);
-    if (error?.message?.includes('API_KEY_INVALID')) {
-      throw new Error("Invalid API Key. Please check your project settings.");
+    if (!process.env.API_KEY) {
+      throw new Error("API Key is missing from the environment configuration.");
     }
-    throw new Error(error?.message || "Analysis failed. The file might be too complex or blocked by safety filters.");
+    throw new Error(error?.message || "Analysis failed. Please check your connection and the uploaded file.");
   }
 }
 
@@ -87,10 +86,10 @@ export async function getAIAnswer(query: string, language: string = 'English') {
       contents: `You are PrepMaster Assistant, managed by Baddam Vaishnavi. Answer in ${language}. 
       Query: ${query}`,
       config: {
-        systemInstruction: "Provide academically sound, concise answers suitable for college exam preparation."
+        systemInstruction: "Provide academically sound, concise answers for exam preparation."
       }
     });
-    return response.text || "I couldn't generate an answer. Please try again.";
+    return response.text || "No response generated.";
   } catch (error) {
     console.error("Gemini Assistant Error:", error);
     throw error;
@@ -101,7 +100,7 @@ export async function generateSchedule(subjects: string[], startDate: string) {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Create a JSON exam timetable for: ${subjects.join(", ")}. Start: ${startDate}.`,
+      contents: `Create an exam timetable for: ${subjects.join(", ")}. Start: ${startDate}. Return JSON array of objects with subject, date, timeSlot, room.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {

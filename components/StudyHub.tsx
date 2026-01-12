@@ -52,7 +52,6 @@ const StudyHub: React.FC<StudyHubProps> = ({ notes, onAddNote, isAdmin }) => {
         const base64 = await fileToBase64(selectedFile);
         fileData = { data: base64, mimeType: selectedFile.type };
         
-        // Basic check for text-based files to append content
         if (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt')) {
            const text = await selectedFile.text();
            extraText += "\n\nFile Content:\n" + text;
@@ -72,7 +71,7 @@ const StudyHub: React.FC<StudyHubProps> = ({ notes, onAddNote, isAdmin }) => {
         importantQuestions: (aiResult.importantQuestions || []).map((q: any) => ({
           id: Math.random().toString(),
           question: q.question,
-          priority: q.priority as Priority
+          priority: q.priority as Priority || Priority.IMPORTANT
         })),
         formulas: aiResult.formulas || [],
         definitions: aiResult.definitions || []
@@ -87,7 +86,9 @@ const StudyHub: React.FC<StudyHubProps> = ({ notes, onAddNote, isAdmin }) => {
       alert("Success! Material analyzed and shared.");
     } catch (err: any) {
       console.error("Study Hub Upload Error:", err);
-      alert(err.message || "Analysis failed. Please ensure your API key is configured in project settings.");
+      // More descriptive error handling for the user
+      const message = err.message || "An unexpected error occurred during analysis.";
+      alert(`Error: ${message}`);
     } finally {
       setIsUploading(false);
     }
