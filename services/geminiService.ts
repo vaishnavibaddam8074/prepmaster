@@ -1,36 +1,36 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Priority } from "../types";
 
 // Initialize the Google GenAI SDK strictly as per requirements
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// Note: Ensure API_KEY is set in your Vercel Environment Variables
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 /**
- * Strips markdown code blocks and whitespace from AI responses before parsing as JSON.
+ * Robust JSON parser that handles potential AI markdown wrapping
  */
-function safeJsonParse(text: string) {
+function safeJsonParse(text: string | undefined) {
+  if (!text) throw new Error("AI returned an empty response.");
   try {
+    // Strip markdown code blocks if present
     const cleaned = text.replace(/```json\n?|```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("Failed to parse JSON response from AI:", text);
-    throw new Error("Invalid AI response format");
+    console.error("AI Response was not valid JSON:", text);
+    throw new Error("Failed to parse AI output. Try again with clearer content.");
   }
 }
 
 export async function summarizeNotes(rawContent: string, fileData?: { data: string, mimeType: string }) {
-  const parts: any[] = [
-    { text: `Analyze the following lecture notes and provide a structured summary.
-    Identify:
-    1. Key Concepts
-    2. Critical Formulas
-    3. Essential Definitions
-    4. Important Questions categorized by priority (Critical, Important, Optional, Less Important)
-    
-    Output MUST be a valid JSON object.
-    
-    Additional Text Context: ${rawContent}` }
-  ];
+  const prompt = `Analyze these student study materials. 
+  Extract and structure the following into a JSON object:
+  1. "summary": A concise overview of the material.
+  2. "formulas": A list of mathematical or technical formulas.
+  3. "definitions": Key terms and their meanings.
+  4. "importantQuestions": A list of objects with "question" (string) and "priority" (string: "Critical", "Important", "Optional", or "Less Important").
+  
+  User provided context: ${rawContent || 'No additional text provided.'}`;
+
+  const parts: any[] = [{ text: prompt }];
 
   if (fileData) {
     parts.push({
@@ -59,7 +59,7 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
                 type: Type.OBJECT,
                 properties: {
                   question: { type: Type.STRING },
-                  priority: { type: Type.STRING, enum: Object.values(Priority) }
+                  priority: { type: Type.STRING }
                 },
                 required: ["question", "priority"]
               }
@@ -71,9 +71,12 @@ export async function summarizeNotes(rawContent: string, fileData?: { data: stri
     });
 
     return safeJsonParse(response.text);
-  } catch (error) {
-    console.error("Gemini API Error (Summarization):", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Gemini Summarization Error:", error);
+    if (error?.message?.includes('API_KEY_INVALID')) {
+      throw new Error("Invalid API Key. Please check your project settings.");
+    }
+    throw new Error(error?.message || "Analysis failed. The file might be too complex or blocked by safety filters.");
   }
 }
 
@@ -81,18 +84,15 @@ export async function getAIAnswer(query: string, language: string = 'English') {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `You are PrepMaster Assistant, a college exam expert managed by Baddam Vaishnavi.
-      Answer the following query clearly and concisely to satisfy both students and faculty.
-      Provide the answer in ${language}.
-      
+      contents: `You are PrepMaster Assistant, managed by Baddam Vaishnavi. Answer in ${language}. 
       Query: ${query}`,
       config: {
-        systemInstruction: "Ensure answers are academically rigorous yet easy to understand for revision."
+        systemInstruction: "Provide academically sound, concise answers suitable for college exam preparation."
       }
     });
-    return response.text;
+    return response.text || "I couldn't generate an answer. Please try again.";
   } catch (error) {
-    console.error("Gemini API Error (Assistant):", error);
+    console.error("Gemini Assistant Error:", error);
     throw error;
   }
 }
@@ -101,13 +101,7 @@ export async function generateSchedule(subjects: string[], startDate: string) {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Create an optimized exam timetable for the following subjects: ${subjects.join(", ")}.
-      Start date: ${startDate}.
-      Constraints: 
-      - Max 1 exam per day.
-      - No exams on Sundays.
-      - Balanced time slots (9 AM - 12 PM or 2 PM - 5 PM).
-      - Allow prep days for difficult subjects.`,
+      contents: `Create a JSON exam timetable for: ${subjects.join(", ")}. Start: ${startDate}.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -127,7 +121,7 @@ export async function generateSchedule(subjects: string[], startDate: string) {
     });
     return safeJsonParse(response.text);
   } catch (error) {
-    console.error("Gemini API Error (Scheduler):", error);
+    console.error("Gemini Scheduler Error:", error);
     throw error;
   }
 }

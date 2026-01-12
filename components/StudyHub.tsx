@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Note, Priority, NoteType } from '../types';
 import { summarizeNotes } from '../services/geminiService';
@@ -50,48 +49,45 @@ const StudyHub: React.FC<StudyHubProps> = ({ notes, onAddNote, isAdmin }) => {
       let extraText = uploadText;
 
       if (selectedFile) {
-        if (selectedFile.type.startsWith('image/')) {
-          const base64 = await fileToBase64(selectedFile);
-          fileData = { data: base64, mimeType: selectedFile.type };
-        } else if (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md')) {
-          const text = await selectedFile.text();
-          extraText += "\n\n--- Content from uploaded file ---\n" + text;
-        } else if (selectedFile.type === 'application/pdf') {
-           const base64 = await fileToBase64(selectedFile);
-           fileData = { data: base64, mimeType: 'application/pdf' };
-        } else {
-          alert("Direct PPT/Word parsing requires server-side processing. For best results, please save as PDF or copy-paste text here.");
-          setIsUploading(false);
-          return;
+        const base64 = await fileToBase64(selectedFile);
+        fileData = { data: base64, mimeType: selectedFile.type };
+        
+        // Basic check for text-based files to append content
+        if (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt')) {
+           const text = await selectedFile.text();
+           extraText += "\n\nFile Content:\n" + text;
         }
       }
 
       const aiResult = await summarizeNotes(extraText, fileData);
+      
       const newNote: Note = {
         id: Date.now().toString(),
         title,
         subject,
         type: noteType,
-        content: aiResult.summary,
+        content: aiResult.summary || "Summary generation failed.",
         facultyName: "Faculty Document",
         dateUploaded: new Date().toLocaleDateString(),
-        importantQuestions: aiResult.importantQuestions.map((q: any) => ({
+        importantQuestions: (aiResult.importantQuestions || []).map((q: any) => ({
           id: Math.random().toString(),
           question: q.question,
-          priority: q.priority
+          priority: q.priority as Priority
         })),
-        formulas: aiResult.formulas,
-        definitions: aiResult.definitions
+        formulas: aiResult.formulas || [],
+        definitions: aiResult.definitions || []
       };
+
       onAddNote(newNote);
       setUploadText("");
       setTitle("");
       setSubject("");
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err) {
-      console.error(err);
-      alert("Analysis failed. Try simplifying the content or using clear images.");
+      alert("Success! Material analyzed and shared.");
+    } catch (err: any) {
+      console.error("Study Hub Upload Error:", err);
+      alert(err.message || "Analysis failed. Please ensure your API key is configured in project settings.");
     } finally {
       setIsUploading(false);
     }
